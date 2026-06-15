@@ -10,7 +10,7 @@ gem "turbo-rails"
 gem "stimulus-rails"
 gem "tailwindcss-rails"
 
-gem "sidekiq", "~> 7.3"
+gem "sidekiq", "~> 8.0"
 gem "connection_pool", "~> 2.5"
 gem "redis", ">= 4.0.1"
 
