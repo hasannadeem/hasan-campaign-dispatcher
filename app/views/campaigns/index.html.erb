@@ -1,0 +1,24 @@
+<% content_for :title, "Campaigns" %>
+
+<div class="grid gap-10 lg:grid-cols-5">
+  <section class="lg:col-span-2">
+    <h1 class="text-lg font-semibold text-slate-900">New campaign</h1>
+    <p class="mt-1 text-sm text-slate-500">Add recipients, then dispatch the review requests.</p>
+
+    <%= render "form", campaign: @campaign %>
+  </section>
+
+  <section class="lg:col-span-3">
+    <h2 class="text-lg font-semibold text-slate-900">Recent campaigns</h2>
+
+    <div id="campaigns" class="mt-4 space-y-3">
+      <% if @campaigns.any? %>
+        <%= render @campaigns %>
+      <% else %>
+        <p class="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
+          No campaigns yet. Create one to get started.
+        </p>
+      <% end %>
+    </div>
+  </section>
+</div>

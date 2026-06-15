@@ -1,0 +1,8 @@
+<% styles = {
+     "pending"    => "bg-slate-100 text-slate-600",
+     "processing" => "bg-amber-100 text-amber-700",
+     "completed"  => "bg-emerald-100 text-emerald-700"
+   } %>
+<span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium <%= styles[campaign.status] %>">
+  <%= campaign.status.titleize %>
+</span>
