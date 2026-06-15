@@ -1,24 +1,50 @@
 <% content_for :title, "Campaigns" %>
 
-<div class="grid gap-10 lg:grid-cols-5">
+<%= render "campaigns/stats", stats: @stats %>
+
+<div class="mt-8 grid gap-10 lg:grid-cols-5">
   <section class="lg:col-span-2">
-    <h1 class="text-lg font-semibold text-slate-900">New campaign</h1>
-    <p class="mt-1 text-sm text-slate-500">Add recipients, then dispatch the review requests.</p>
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-semibold text-zinc-900">New campaign</h1>
+      <%= link_to "Bulk import →", import_campaigns_path, class: "text-sm font-medium text-zinc-500 transition hover:text-zinc-900" %>
+    </div>
+    <p class="mt-1 text-sm text-zinc-500">Add a message and recipients, then dispatch.</p>
 
     <%= render "form", campaign: @campaign %>
   </section>
 
   <section class="lg:col-span-3">
-    <h2 class="text-lg font-semibold text-slate-900">Recent campaigns</h2>
+    <h2 class="text-lg font-semibold text-zinc-900">Campaigns</h2>
 
-    <div id="campaigns" class="mt-4 space-y-3">
+    <%= form_with url: root_path, method: :get,
+          data: { turbo_frame: "campaigns", controller: "filter" }, class: "mt-4 space-y-3" do %>
+      <%= search_field_tag :q, params[:q],
+            placeholder: "Search campaigns…", autocomplete: "off",
+            data: { action: "input->filter#debounced" },
+            class: "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm shadow-sm focus:border-zinc-900 focus:ring-zinc-900" %>
+      <div class="flex flex-wrap gap-2">
+        <% [["All", ""], ["Pending", "pending"], ["Processing", "processing"], ["Completed", "completed"]].each do |label, val| %>
+          <label class="cursor-pointer">
+            <%= radio_button_tag :status, val, params[:status].to_s == val,
+                  data: { action: "change->filter#submit" }, class: "peer sr-only" %>
+            <span class="inline-flex rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-600 peer-checked:border-zinc-900 peer-checked:bg-zinc-900 peer-checked:text-white">
+              <%= label %>
+            </span>
+          </label>
+        <% end %>
+      </div>
+    <% end %>
+
+    <%# target: "_top" so clicking a campaign navigates the whole page; the search %>
+    <%# form still updates just this frame via its explicit data-turbo-frame. %>
+    <%= turbo_frame_tag "campaigns", target: "_top", class: "mt-4 block space-y-3" do %>
       <% if @campaigns.any? %>
         <%= render @campaigns %>
       <% else %>
-        <p class="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
-          No campaigns yet. Create one to get started.
+        <p class="rounded-xl border border-dashed border-zinc-300 bg-white px-4 py-10 text-center text-sm text-zinc-500">
+          <%= params[:q].present? || params[:status].present? ? "No campaigns match your filters." : "No campaigns yet. Create one to get started." %>
         </p>
       <% end %>
-    </div>
+    <% end %>
   </section>
 </div>

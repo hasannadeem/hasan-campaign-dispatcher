@@ -38,10 +38,47 @@ RSpec.configure do |config|
     Rails.root.join('spec/fixtures')
   ]
 
-  # If you're not using ActiveRecord, or you'd prefer not to run each of your
-  # examples within a transaction, remove the following line or assign false
-  # instead of true.
-  config.use_transactional_fixtures = true
+  # database_cleaner manages isolation instead of transactional fixtures, because
+  # system specs need TRUNCATION: a transaction would (a) hide the seeded rows
+  # from the Capybara server/worker thread and (b) suppress after_*_commit
+  # callbacks, so the live Turbo broadcasts would never fire.
+  config.use_transactional_fixtures = false
+
+  config.before(:suite) do
+    DatabaseCleaner.clean_with(:truncation)
+  end
+
+  # Strategy is chosen per-example, then `start` runs LAST (it's defined after
+  # the strategy hooks) so it opens with the right strategy. Using start/clean
+  # rather than an around-cleaning block avoids the hook-ordering trap where the
+  # around block reads the strategy before the type-based before hook sets it.
+  config.before(:each) do
+    DatabaseCleaner.strategy = :transaction
+  end
+
+  config.before(:each, type: :system) do
+    DatabaseCleaner.strategy = :truncation
+  end
+
+  config.before(:each) do
+    DatabaseCleaner.start
+  end
+
+  config.append_after(:each) do
+    DatabaseCleaner.clean
+  end
+
+  # Request/job specs use the :test adapter (have_enqueued_job, perform_now).
+  # System specs use :async so the job runs on a background thread AFTER the
+  # browser has subscribed to the stream — inline execution would lose every
+  # broadcast. The adapter is restored after each system example.
+  config.before(:each, type: :system) do
+    ActiveJob::Base.queue_adapter = :async
+  end
+
+  config.after(:each, type: :system) do
+    ActiveJob::Base.queue_adapter = :test
+  end
 
   # You can uncomment this line to turn off ActiveRecord support entirely.
   # config.use_active_record = false
@@ -67,4 +104,5 @@ RSpec.configure do |config|
   config.filter_rails_from_backtrace!
 
   config.include FactoryBot::Syntax::Methods
+  config.include ActiveJob::TestHelper
 end

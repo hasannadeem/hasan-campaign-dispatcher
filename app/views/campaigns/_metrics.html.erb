@@ -1,0 +1,42 @@
+<%# Global metric panel — re-rendered live via Turbo whenever the campaign's %>
+<%# counter caches or status change. Root id must equal the broadcast target. %>
+<section id="<%= dom_id(campaign, :metrics) %>" class="border-b border-zinc-200 bg-zinc-50 p-6">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <%= render "campaigns/status_badge", campaign: campaign %>
+      <span class="text-sm font-medium text-zinc-700" data-role="progress-count">
+        Sent <%= campaign.processed_count %> of <%= campaign.recipients_count %>
+      </span>
+      <% if campaign.failed_count.positive? %>
+        <span class="inline-flex items-center gap-1.5 text-sm font-medium text-rose-600">
+          <span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+          <%= campaign.failed_count %> failed
+        </span>
+      <% end %>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <% if campaign.pending? %>
+        <%= button_to "Start dispatch", start_campaign_path(campaign),
+              data: { turbo_submits_with: "Starting…" },
+              class: "rounded-md bg-zinc-900 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-700 disabled:opacity-60" %>
+      <% elsif campaign.retryable? %>
+        <%= button_to "Retry #{pluralize(campaign.failed_count, 'failed recipient')}", retry_failed_campaign_path(campaign),
+              data: { turbo_submits_with: "Retrying…" },
+              class: "rounded-md border border-zinc-300 bg-white px-3.5 py-2 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60" %>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="mt-4">
+    <div class="flex items-center justify-between text-xs font-medium text-zinc-500">
+      <span><%= campaign.progress_percent %>% complete</span>
+      <span><%= campaign.finished_count %> / <%= campaign.recipients_count %> processed</span>
+    </div>
+    <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-zinc-200">
+      <div class="h-full rounded-full bg-zinc-900 transition-all duration-500 ease-out"
+           style="width: <%= campaign.progress_percent %>%"></div>
+    </div>
+    <p class="mt-2 text-xs text-zinc-400">Updated <%= relative_time(campaign.updated_at) %></p>
+  </div>
+</section>

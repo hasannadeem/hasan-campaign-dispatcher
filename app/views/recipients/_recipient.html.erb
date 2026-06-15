@@ -1,9 +1,9 @@
-<% dot = { "queued" => "bg-slate-300", "sent" => "bg-emerald-500", "failed" => "bg-rose-500" } %>
-<% label = { "queued" => "text-slate-500", "sent" => "text-emerald-600", "failed" => "text-rose-600" } %>
+<% dot = { "queued" => "bg-zinc-300", "sent" => "bg-emerald-500", "failed" => "bg-rose-500" } %>
+<% label = { "queued" => "text-zinc-500", "sent" => "text-emerald-600", "failed" => "text-rose-600" } %>
 <li id="<%= dom_id(recipient) %>" class="flex items-center justify-between px-6 py-4">
   <div>
-    <p class="font-medium text-slate-900"><%= recipient.name %></p>
-    <p class="text-sm text-slate-500"><%= recipient.contact %></p>
+    <p class="font-medium text-zinc-900"><%= recipient.name %></p>
+    <p class="text-sm text-zinc-500"><%= recipient.email %></p>
   </div>
   <span class="inline-flex items-center gap-2 text-sm font-medium <%= label[recipient.status] %>">
     <span class="h-2 w-2 rounded-full <%= dot[recipient.status] %> <%= 'animate-pulse' if recipient.queued? %>"></span>

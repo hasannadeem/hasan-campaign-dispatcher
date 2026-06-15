@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_15_094453) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_15_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -20,18 +20,22 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_15_094453) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "recipients_count", default: 0, null: false
+    t.integer "processed_count", default: 0, null: false
+    t.integer "failed_count", default: 0, null: false
+    t.text "body"
+    t.check_constraint "status = ANY (ARRAY[0, 1, 2])", name: "campaigns_status_range"
   end
 
   create_table "recipients", force: :cascade do |t|
     t.bigint "campaign_id", null: false
     t.string "name", null: false
-    t.string "contact", null: false
+    t.string "email", null: false
     t.integer "status", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["campaign_id", "status"], name: "index_recipients_on_campaign_id_and_status"
-    t.index ["campaign_id"], name: "index_recipients_on_campaign_id"
+    t.check_constraint "status = ANY (ARRAY[0, 1, 2])", name: "recipients_status_range"
   end
 
-  add_foreign_key "recipients", "campaigns"
+  add_foreign_key "recipients", "campaigns", on_delete: :cascade
 end

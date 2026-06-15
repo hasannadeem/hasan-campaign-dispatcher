@@ -1,4 +1,4 @@
-<%= form_with model: campaign, class: "mt-5 space-y-4" do |form| %>
+<%= form_with model: campaign, html: { multipart: true, class: "mt-5 space-y-4" } do |form| %>
   <% if campaign.errors.any? %>
     <div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
       <%= pluralize(campaign.errors.count, "error") %> prevented this campaign from being saved.
@@ -6,19 +6,42 @@
   <% end %>
 
   <div>
-    <%= form.label :title, class: "block text-sm font-medium text-slate-700" %>
+    <%= form.label :title, class: "block text-sm font-medium text-zinc-700" %>
     <%= form.text_field :title, placeholder: "Spring product reviews",
-          class: "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" %>
+          class: "mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm shadow-sm focus:border-zinc-900 focus:ring-zinc-900" %>
   </div>
 
   <div>
-    <%= form.label :recipients_text, "Recipients", class: "block text-sm font-medium text-slate-700" %>
-    <p class="text-xs text-slate-500">One per line, formatted as <span class="font-mono">Name, email</span>.</p>
-    <%= form.text_area :recipients_text, rows: 6,
-          placeholder: "Ada Lovelace, ada@example.com\nGrace Hopper, grace@example.com",
-          class: "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" %>
+    <%= form.label :body, "Message", class: "block text-sm font-medium text-zinc-700" %>
+    <p class="text-xs text-zinc-500">Personalize with <span class="font-mono">{{name}}</span>.</p>
+    <%= form.text_area :body, rows: 3, placeholder: "Hi {{name}}, we'd love your feedback…",
+          class: "mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm shadow-sm focus:border-zinc-900 focus:ring-zinc-900" %>
   </div>
 
-  <%= form.submit "Create campaign",
-        class: "w-full cursor-pointer rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500" %>
+  <div data-controller="toggle">
+    <span class="block text-sm font-medium text-zinc-700">Recipients</span>
+
+    <div class="mt-1 inline-flex rounded-lg bg-zinc-100 p-0.5 text-sm">
+      <button type="button" data-toggle-target="tab" data-mode="paste" data-action="toggle#select"
+              class="rounded-md bg-white px-3 py-1 font-medium text-zinc-900 shadow-sm">Paste</button>
+      <button type="button" data-toggle-target="tab" data-mode="upload" data-action="toggle#select"
+              class="rounded-md px-3 py-1 font-medium text-zinc-500">Upload CSV</button>
+    </div>
+
+    <div data-toggle-target="panel" data-mode="paste" class="mt-2">
+      <p class="text-xs text-zinc-500">One per line, formatted as <span class="font-mono">Name, email</span>.</p>
+      <%= form.text_area :recipients_text, rows: 6,
+            placeholder: "Ada Lovelace, ada@example.com\nGrace Hopper, grace@example.com",
+            class: "mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 font-mono text-sm shadow-sm focus:border-zinc-900 focus:ring-zinc-900" %>
+    </div>
+
+    <div data-toggle-target="panel" data-mode="upload" hidden class="mt-2">
+      <p class="text-xs text-zinc-500">CSV columns <span class="font-mono">name, email</span> (header optional).</p>
+      <%= form.file_field :recipients_csv, accept: ".csv,text/csv",
+            class: "mt-1 block w-full text-sm text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700" %>
+    </div>
+  </div>
+
+  <%= form.submit "Create campaign", data: { turbo_submits_with: "Creating…" },
+        class: "w-full cursor-pointer rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-700" %>
 <% end %>

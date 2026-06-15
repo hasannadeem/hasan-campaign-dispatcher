@@ -1,25 +1,34 @@
 class DispatchCampaignJob < ApplicationJob
-  queue_as :default
+  queue_as :dispatch
 
-  def perform(campaign)
-    campaign.processing!
+  # Fan-out master. Acquires a row lock (so a double-clicked "Dispatch" can only
+  # flip the campaign into `processing` once), then enqueues one atomic child
+  # worker per queued recipient. Only primitive IDs cross the Sidekiq boundary.
+  def perform(campaign_id)
+    campaign = Campaign.find(campaign_id)
 
-    campaign.recipients.queued.find_each { |recipient| deliver(recipient) }
+    recipient_ids =
+      campaign.with_lock do
+        campaign.processing! if campaign.pending?
+        # Guard: nothing to fan out unless the campaign is actively processing.
+        next [] unless campaign.processing?
 
-    campaign.completed!
+        # Re-querying `queued` keeps retries idempotent and lets the retry loop
+        # reuse this same job for the recipients it just re-queued.
+        campaign.recipients.queued.order(:id).pluck(:id)
+      end
+
+    recipient_ids.each { |id| DeliverNotificationJob.perform_later(id) }
+
+    # A campaign with nothing left to send completes immediately.
+    complete_if_finished(campaign) if recipient_ids.empty?
   end
 
   private
 
-  def deliver(recipient)
-    sleep(rand(1..3))
-    recipient.update!(status: delivery_outcome)
-  rescue StandardError => e
-    recipient.update!(status: :failed)
-    Rails.logger.error("Delivery failed for recipient ##{recipient.id}: #{e.class} - #{e.message}")
-  end
-
-  def delivery_outcome
-    rand(10).zero? ? :failed : :sent
+  def complete_if_finished(campaign)
+    campaign.with_lock do
+      campaign.update!(status: :completed) if campaign.processing? && campaign.all_processed?
+    end
   end
 end

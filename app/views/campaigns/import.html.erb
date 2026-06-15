@@ -1,0 +1,27 @@
+<% content_for :title, "Import campaigns" %>
+
+<div class="mb-6">
+  <%= link_to "← All campaigns", root_path, class: "text-sm font-medium text-zinc-500 transition hover:text-zinc-900" %>
+</div>
+
+<div class="mx-auto max-w-xl rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+  <h1 class="text-lg font-semibold tracking-tight text-zinc-900">Bulk import campaigns</h1>
+  <p class="mt-1 text-sm text-zinc-500">
+    Upload a CSV with columns <span class="font-mono">title, name, email</span>. Rows are grouped by title — one campaign per distinct title.
+  </p>
+
+  <%= form_with url: import_campaigns_path, method: :post, html: { multipart: true, class: "mt-5 space-y-4" } do %>
+    <%= file_field_tag :file, accept: ".csv,text/csv",
+          class: "block w-full text-sm text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700" %>
+    <%= submit_tag "Import", data: { turbo_submits_with: "Importing…" },
+          class: "w-full cursor-pointer rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-700" %>
+  <% end %>
+
+  <div class="mt-6 rounded-lg bg-zinc-50 p-4">
+    <p class="text-xs font-medium uppercase tracking-wide text-zinc-500">Example</p>
+    <pre class="mt-2 overflow-x-auto text-xs text-zinc-600">title,name,email
+Q1 Reviews,Ada Lovelace,ada@example.com
+Q1 Reviews,Grace Hopper,grace@example.com
+Spring Promo,Alan Turing,alan@example.com</pre>
+  </div>
+</div>

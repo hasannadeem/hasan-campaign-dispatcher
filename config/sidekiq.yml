@@ -1,3 +1,8 @@
-:concurrency: 5
+# Weighted queues so a large campaign's delivery fan-out can't starve new
+# dispatches: `dispatch` (start a campaign, enqueue children) is polled more
+# often than `delivery` (the per-recipient sends). `default` is a catch-all.
+:concurrency: 10
 :queues:
-  - default
+  - [dispatch, 3]
+  - [delivery, 2]
+  - [default, 1]

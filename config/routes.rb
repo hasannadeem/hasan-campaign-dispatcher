@@ -2,7 +2,14 @@ require "sidekiq/web"
 
 Rails.application.routes.draw do
   resources :campaigns, only: %i[index show create] do
-    post :start, on: :member
+    collection do
+      get :import
+      post :import
+    end
+    member do
+      post :start
+      post :retry_failed
+    end
   end
 
   mount Sidekiq::Web => "/sidekiq"

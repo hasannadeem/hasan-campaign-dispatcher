@@ -2,25 +2,56 @@
 <%= turbo_stream_from @campaign %>
 
 <div class="mb-6">
-  <%= link_to "← All campaigns", root_path, class: "text-sm font-medium text-slate-500 hover:text-slate-900" %>
+  <%= link_to "← All campaigns", root_path, class: "text-sm font-medium text-zinc-500 transition hover:text-zinc-900" %>
 </div>
 
-<div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
-  <div class="flex items-start justify-between gap-4 border-b border-slate-100 p-6">
-    <div>
-      <h1 class="text-xl font-semibold text-slate-900"><%= @campaign.title %></h1>
-      <p class="mt-1 text-sm text-slate-500"><%= pluralize(@campaign.recipients_count, "recipient") %></p>
-    </div>
+<div class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+  <div class="border-b border-zinc-200 p-6">
+    <h1 class="text-lg font-semibold tracking-tight text-zinc-900"><%= @campaign.title %></h1>
+    <p class="mt-1 text-sm text-zinc-500"><%= pluralize(@campaign.recipients_count, "recipient") %></p>
+    <p class="mt-2 text-xs text-zinc-400">Created <%= relative_time(@campaign.created_at) %></p>
+  </div>
 
-    <% if @campaign.pending? %>
-      <%= button_to "Start dispatch", start_campaign_path(@campaign),
-            class: "rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500" %>
+  <% if @campaign.body.present? %>
+    <div class="border-b border-zinc-200 p-6">
+      <h2 class="text-xs font-medium uppercase tracking-wide text-zinc-500">Message</h2>
+      <p class="mt-2 whitespace-pre-line text-sm text-zinc-700"><%= @campaign.body %></p>
+      <% if (sample = @campaign.recipients.first) %>
+        <p class="mt-3 text-xs text-zinc-400">Preview for <%= sample.name %></p>
+        <p class="mt-1 whitespace-pre-line rounded-lg bg-zinc-50 p-3 text-sm text-zinc-600"><%= @campaign.render_body_for(sample) %></p>
+      <% end %>
+    </div>
+  <% end %>
+
+  <%= render "campaigns/metrics", campaign: @campaign %>
+
+  <div class="border-b border-zinc-200 bg-white px-6 py-4">
+    <%= form_with url: campaign_path(@campaign), method: :get,
+          data: { turbo_frame: "recipients", controller: "filter" }, class: "flex flex-wrap items-center gap-3" do %>
+      <%= search_field_tag :rq, params[:rq],
+            placeholder: "Filter recipients…", autocomplete: "off",
+            data: { action: "input->filter#debounced" },
+            class: "min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm shadow-sm focus:border-zinc-900 focus:ring-zinc-900" %>
+      <div class="flex flex-wrap gap-2">
+        <% [["All", ""], ["Queued", "queued"], ["Sent", "sent"], ["Failed", "failed"]].each do |label, val| %>
+          <label class="cursor-pointer">
+            <%= radio_button_tag :rstatus, val, params[:rstatus].to_s == val,
+                  data: { action: "change->filter#submit" }, class: "peer sr-only" %>
+            <span class="inline-flex rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-600 peer-checked:border-zinc-900 peer-checked:bg-zinc-900 peer-checked:text-white">
+              <%= label %>
+            </span>
+          </label>
+        <% end %>
+      </div>
     <% end %>
   </div>
 
-  <%= render "campaigns/progress", campaign: @campaign %>
-
-  <ul id="recipients" class="divide-y divide-slate-100">
-    <%= render @campaign.recipients %>
-  </ul>
+  <%= turbo_frame_tag "recipients" do %>
+    <ul id="recipients" class="divide-y divide-zinc-100">
+      <%= render @recipients %>
+    </ul>
+    <% if @recipients.empty? %>
+      <p class="px-6 py-10 text-center text-sm text-zinc-500">No recipients match this filter.</p>
+    <% end %>
+  <% end %>
 </div>

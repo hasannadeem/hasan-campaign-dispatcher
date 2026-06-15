@@ -1,0 +1,6 @@
+title,name,email
+Holiday Specials,Valid Person,valid@example.com
+Holiday Specials,,derived@example.com
+,Missing Title,orphan@example.com
+Holiday Specials,No Email Here,
+Year End Wrap,Solo Attendee,solo@example.com
