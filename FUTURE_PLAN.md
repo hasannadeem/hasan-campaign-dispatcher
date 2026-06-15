@@ -10,7 +10,7 @@ campaign and clicks dispatch. The real win is the app noticing a delivered order
 with no review and queueing that customer on its own, with enough limits that we
 never spam anyone.
 
-## 1. Automation engine (~14h)
+## 1. Automation engine (~13h)
 
 The big one, and most of the value.
 
@@ -59,7 +59,7 @@ Bulk retry of failed recipients already exists. A few additions:
   set. Add retrying a single recipient, plus exponential backoff on transient
   failures so they recover without anyone clicking.
 
-## 3. Real sending (~6h)
+## 3. Real sending (~5h)
 
 The send is faked today. To make it real:
 
@@ -91,19 +91,34 @@ The send is faked today. To make it real:
   token endpoint, tighter CSV limits, and setting allowed_request_origins for the
   cable connection in production.
 
-## 6. Scale and reliability (~3h)
+## 6. Performance, scale, and reliability (~6h)
 
-- Move the fan-out to Sidekiq Batches with a batch callback that finalizes the
-  campaign, so the master job isn't holding every recipient id in memory. Add
-  idempotency keys, a dead-letter queue with a small UI to inspect and replay
-  poisoned jobs, and a circuit breaker that pauses a campaign if a provider
-  starts erroring.
-- Trigram indexes for search, pagination on long lists, and error tracking
-  (Sentry) plus delivery/failure metrics.
-- Contract tests for the delivery adapters and a CI matrix across the Ruby and
-  Rails versions we support.
+Most of this is doing the same work with far fewer queries and round-trips.
 
-## 7. UI and UX (~3h)
+- **Bulk writes.** The CSV import and the automation engine create recipients one
+  row at a time; switch them to `insert_all` so a 10k-row import is a single
+  statement instead of 10k inserts.
+- **Bulk enqueue.** The fan-out enqueues children in a loop; use
+  `perform_all_later` (Rails 7.1+) so launching a large campaign pushes jobs to
+  Redis in batches rather than one call per recipient.
+- **Sidekiq Batches.** Move the fan-out onto a batch with a callback that
+  finalizes the campaign, so the master job never holds every recipient id in
+  memory.
+- **Caching.** Russian-doll fragment caching on the campaign cards (keyed on
+  `updated_at`) and a cached, Redis-backed stats summary, so the dashboard stays
+  cheap as the data grows.
+- **Reporting rollups.** A nightly rollup table (or a materialized view) for the
+  funnel, so reports read precomputed numbers instead of scanning events each
+  time.
+- **Reliability.** Idempotency keys, a dead-letter queue with a small UI to
+  inspect and replay poisoned jobs, and a circuit breaker that pauses a campaign
+  when a provider starts erroring.
+- **Guardrails.** Trigram indexes for search, pagination on long lists, the
+  `bullet` gem to catch N+1s in CI, error tracking (Sentry), and delivery/failure
+  metrics. Contract tests for the delivery adapters and a CI matrix across the
+  Ruby and Rails versions we support.
+
+## 7. UI and UX (~2h)
 
 - Campaign edit, clone, and delete; recipient pagination; bulk recipient actions;
   toast notifications; drag-and-drop CSV with a preview and per-row validation;
@@ -115,22 +130,22 @@ The send is faked today. To make it real:
 
 | Area | Hours |
 |---|---|
-| Automation engine | 14 |
+| Automation engine | 13 |
 | Pause, scheduling, retry | 6 |
-| Real sending | 6 |
+| Real sending | 5 |
 | Reporting | 4 |
 | Auth and multi-tenancy | 4 |
-| Scale and reliability | 3 |
-| UI and UX | 3 |
+| Performance, scale & reliability | 6 |
+| UI and UX | 2 |
 | Total | 40 |
 
 ## Order I'd do it in
 
-1. Automation engine plus the lifecycle controls first (~20h). That's the actual
+1. Automation engine plus the lifecycle controls first (~19h). That's the actual
    differentiator.
-2. Real sending and reporting (~10h). Makes it usable and shows results.
-3. Auth, tenancy, scale (~7h).
-4. UI polish (~3h), spread across the rest.
+2. Real sending and reporting (~9h). Makes it usable and shows results.
+3. Auth, tenancy, and the performance/scale work (~10h).
+4. UI polish (~2h), spread across the rest.
 
 ## Assumptions and open questions
 

@@ -1,47 +1,33 @@
 # Campaign Dispatcher
 
-A proof-of-concept for automating customer review-request collection. Create a
-campaign, add a list of recipients, dispatch it, and watch each recipient's
-delivery status update in real time — no page refresh.
+A small app for sending review-request campaigns and watching them go out live.
+You create a campaign with a message and a list of recipients, hit dispatch, and
+the page updates in real time as each recipient flips from queued to sent or
+failed.
 
-Sends are simulated (a short random delay per recipient) so the app runs without
-a real SMS/email provider.
+The send itself is simulated — a short random delay per recipient with the
+occasional failure — so the whole thing runs end to end without an email or SMS
+provider wired up. Swapping in a real one is a contained change (see Future
+improvements).
 
 ## Stack
 
-- Ruby 3.2 / Rails 7.2
-- PostgreSQL
-- Sidekiq + Redis (background dispatch)
-- Hotwire — Turbo Streams + Turbo Frames (real-time UI), broadcast over Action Cable
-- Tailwind CSS
-- RSpec + Capybara
+Ruby 3.2 / Rails 7.2, PostgreSQL, Sidekiq + Redis, Hotwire (Turbo + a little
+Stimulus) over Action Cable, Tailwind CSS, and RSpec + Capybara.
 
-## Getting started
+## Running it locally
 
-### Prerequisites
-
-- Ruby 3.2.x
-- PostgreSQL running locally
-- Redis running locally (`redis-server`)
-
-### Setup
+You'll need Ruby 3.2, PostgreSQL, and Redis running.
 
 ```bash
-bundle install
-bin/rails db:prepare   # create, migrate, seed
+bin/setup     # bundle, create/migrate/seed the DB, build the stylesheet
+bin/dev       # web server + Tailwind watcher + Sidekiq, together
 ```
 
-### Running
+Then open http://localhost:3000. The seed data gives you campaigns in every state
+to click around in.
 
-Everything (web server, Tailwind watcher, Sidekiq) is wired into `Procfile.dev`:
-
-```bash
-bin/dev
-```
-
-Then open http://localhost:3000.
-
-Prefer separate terminals? Run them by hand:
+`bin/dev` runs everything from `Procfile.dev`. To run the pieces yourself:
 
 ```bash
 bin/rails server
@@ -49,85 +35,120 @@ bin/rails tailwindcss:watch
 bundle exec sidekiq -C config/sidekiq.yml
 ```
 
-The Sidekiq dashboard is mounted at http://localhost:3000/sidekiq. It's open in
-development, but is protected with HTTP Basic auth whenever both env vars are set
-(recommended in production, since the dashboard exposes recipient emails and can
-retry/kill jobs):
+Redis backs both Sidekiq (the background jobs) and Action Cable (the live
+updates), so it needs to be up before you start. The Sidekiq dashboard is at
+`/sidekiq` — open in development, and behind HTTP Basic auth in production when
+`SIDEKIQ_WEB_USER` and `SIDEKIQ_WEB_PASSWORD` are set.
 
-```bash
-export SIDEKIQ_WEB_USER=admin
-export SIDEKIQ_WEB_PASSWORD=change-me
+## What it does
+
+- Dashboard with summary stats, live search, and status filters.
+- Campaigns with a message body you can personalize with `{{name}}`.
+- Recipients pasted one per line or uploaded as a CSV, plus a bulk importer that
+  turns one `title,name,email` file into several campaigns.
+- Real-time dispatch: rows and the progress bar update as the job runs, no refresh.
+- Retry the failed recipients of a finished campaign without resending the rest.
+- Per-campaign recipient filtering, and created/updated timestamps throughout.
+
+The UI is built to read like a real SaaS dashboard rather than scaffolding —
+consistent zinc palette, status pills, a real progress bar, and proper empty
+states.
+
+## How the real-time updates work
+
+This is the part I most wanted to get right. The show page subscribes once:
+
+```erb
+<%= turbo_stream_from @campaign %>
 ```
 
-Jobs run on weighted queues (`dispatch` is prioritized over the per-recipient
-`delivery` fan-out) configured in `config/sidekiq.yml`.
+Two things broadcast onto that single stream, split by who owns the data:
 
-### Tests
+- **Each recipient broadcasts its own row** from a model `after_update_commit`.
+  The row owns its state.
+- **The campaign broadcasts the metric panel** (status, counts, progress bar) from
+  its own `after_update_commit`. Aggregate progress is a cross-record rollup, so it
+  belongs to the campaign, not to any single recipient.
+
+Both render off counter-cache columns, so the broadcasts don't touch the database.
+Stimulus stays out of the live-update path completely — Turbo Streams do all of
+it. There are three small Stimulus controllers, but only for things Turbo can't do
+on its own: debouncing the search box, the paste/upload toggle, and dismissing
+flashes.
+
+## Architecture decisions
+
+- **Fan-out background jobs.** Dispatch enqueues one `DispatchCampaignJob`, which
+  takes a row lock, flips the campaign to `processing`, and enqueues one
+  `DeliverNotificationJob` per recipient (passing just the id). That's what scales:
+  a huge campaign is many small jobs, not one long-running one.
+- **Failure handling.** A worker only ever processes `queued` recipients, and it
+  does the recipient update and the campaign's counter bump inside the campaign's
+  row lock — so a double-clicked dispatch or a Sidekiq retry can't double-send or
+  skew the totals. A send that raises is caught and recorded as `failed` for that
+  one recipient; it never aborts the rest of the batch. Transient deadlocks retry
+  with backoff, and jobs for deleted records are discarded rather than retried to
+  the dead set.
+- **Schema.** Status is an enum on both models, backed by integer columns with DB
+  CHECK constraints so a bad value can't be written even from raw SQL. Progress
+  reads from three counter-cache columns on the campaign
+  (`recipients_count`, `processed_count`, `failed_count`) instead of counting rows,
+  so the dashboard and progress have no N+1. There's a composite
+  `(campaign_id, status)` index and a cascading foreign key.
+- **Queues.** Sidekiq runs weighted queues — `dispatch` is polled more often than
+  `delivery` — so a big campaign's sends don't hold up a newly launched one.
+
+## Trade-offs and priorities
+
+A few deliberate calls about where the effort went:
+
+- **Correctness before breadth.** I spent the first stretch making the core loop —
+  create, dispatch, watch it update live — actually robust: idempotent workers,
+  row-locked counter updates, a guarded state machine, and a hardened schema. A
+  dispatcher that miscounts or double-sends on a double-click isn't worth much, so
+  that base came first; the dashboard, search, CSV import, and message body sit on
+  top of it.
+- **Real-time the idiomatic way, not the clever way.** The live updates are plain
+  Turbo Stream broadcasts split by ownership (a recipient owns its row, the
+  campaign owns the aggregate). Stimulus is held to three tiny controllers for the
+  things Turbo genuinely can't do. Less custom JavaScript to maintain, and behavior
+  that's easy to reason about.
+- **A simulated send, cleanly seamed.** The send is a `sleep` plus a ~10% failure,
+  kept behind a single stubbable method. I'd rather have a clean seam to drop a
+  real provider into than a half-wired integration — swapping in Postmark or Twilio
+  is an isolated change, not a rewrite.
+- **Deferred, not forgotten.** No auth/multi-tenancy yet, stats refresh on page
+  load rather than over a live stream, and recipients carry a single email rather
+  than a polymorphic contact. Each is a conscious cut with a clear path forward in
+  the future plan — scoped boundaries, not loose ends.
+
+## Future improvements (with 40 hours)
+
+The full breakdown is in [FUTURE_PLAN.md](FUTURE_PLAN.md). The short version:
+
+- **Automation engine** — the real product, and most of the value. Notice a
+  delivered order with no review and queue that customer automatically, with
+  guardrails (per-order dedup, per-customer frequency cap, opt-out, a ~2-reminder
+  limit) and a tokenized feedback link that closes the loop and yields a conversion
+  rate. Campaigns become the output of a rule, not manual work.
+- **Campaign controls** — pause/resume, scheduling, and per-recipient retry with
+  backoff.
+- **Real delivery** — email/SMS adapters, delivery/bounce webhooks, a suppression
+  list, and rate limiting.
+- **Reporting, auth, and scale** — live stats and a delivered → reviewed →
+  converted funnel, authentication with per-account scoping, and Sidekiq Batches
+  for very large fan-outs.
+
+## Tests
 
 ```bash
-bundle exec rspec
+bundle exec rspec      # model, request, job, service, and system specs
+bundle exec rubocop
 ```
 
-The system spec drives a headless Chrome (Selenium Manager fetches the driver
-automatically). It needs only PostgreSQL — not Redis — because the test
-environment uses the in-process `async` Action Cable adapter and runs the job on
-the `async` ActiveJob adapter (so the browser subscribes before the broadcasts
-fire). It also relies on database_cleaner's **truncation** strategy for system
-specs so the Capybara server thread can see committed rows and `after_*_commit`
-callbacks actually fire. Run `bin/rails tailwindcss:build` first (CI and
-`bin/setup` do this) so the layout's compiled stylesheet is present.
+The system specs drive a real headless browser to check the live Turbo updates,
+search, filtering, retry, and CSV flows end to end.
 
-## How it works
-
-1. Creating a campaign accepts a `Name, email` line per recipient from a
-   textarea, parsed by the `RecipientParser` PORO into `Recipient` records.
-   Splitting is on the first comma; a line with no comma is treated as a bare
-   email, with the name defaulting to the address's local part.
-2. **Start dispatch** enqueues `DispatchCampaignJob`. The job flips the campaign
-   to `processing`, walks its queued recipients (simulating a send with a 1–3s
-   delay each), and marks the campaign `completed` at the end.
-3. The campaign show page subscribes once with `turbo_stream_from @campaign`, and
-   two kinds of targets ride that one stream:
-   - **Recipient rows** broadcast themselves from the model: a
-     `Recipient#after_update_commit` replaces the recipient's own `<li>`.
-   - **Aggregate progress** is broadcast from the job into the
-     `campaign_progress` `<turbo-frame>` (the status badge, the "Sent 5 of 10"
-     counter, and the progress bar) after each recipient and once at completion.
-
-   So a row owns its own state, while progress — derived from *sibling* records —
-   is owned by the orchestrating job, and each updates independently without a
-   refresh.
-
-## Architectural notes
-
-- **Status is modeled as enums** (`Campaign`: pending/processing/completed,
-  `Recipient`: queued/sent/failed) backed by integer columns, with a composite
-  index on `(campaign_id, status)` for the per-status counts. A `recipients_count`
-  counter cache keeps the dashboard list free of N+1 count queries.
-- **Broadcasts are split by ownership.** A recipient row is the recipient's own
-  concern, so it broadcasts from a model `after_update_commit`. Aggregate
-  progress is derived from *sibling* records, so it is the orchestrating job's
-  concern and broadcasts from `DispatchCampaignJob` — the recipient's own commit
-  is the wrong home for a cross-record rollup. The spec calls for exactly this
-  Turbo Streams (rows) / Turbo Frame (progress) split.
-- **Failure handling**: the simulated send occasionally rejects a recipient, and
-  any exception during a send is rescued, logged, and recorded as `failed` for
-  that recipient. One bad recipient never aborts the rest of the campaign.
-- **Stimulus is intentionally absent.** Turbo Streams cover every live update
-  here, so reaching for custom JavaScript would only add moving parts.
-- **Cross-process broadcasting**: because Sidekiq runs in a separate process
-  from Puma, Action Cable uses the Redis adapter in development (the default
-  `async` adapter can't deliver across processes).
-
-## Trade-offs (6-hour scope)
-
-- Recipient entry is a textarea rather than dynamic nested forms — faster to
-  build and friendlier for pasting a real list.
-- The "send" is simulated with `sleep`; there's no real provider, retry/backoff
-  policy, or rate limiting.
-- No authentication, pagination, or campaign editing/deletion.
-
-## Future improvements
-
-The next ~40 hours of work (the automation engine, pause/retry, real sending,
-reporting, auth, scale, and UI polish) are laid out in [FUTURE_PLAN.md](FUTURE_PLAN.md).
+For hands-on testing, [QA_GUIDE.md](QA_GUIDE.md) walks through every feature
+against the seeded dataset (`bin/rails db:seed`), and [DELIVERY.md](DELIVERY.md)
+is a short handover with a five-minute evaluation path.
